@@ -35,6 +35,32 @@ class ParseResponse(BaseModel):
     sample: List[Requirement]
 
 
+class SectionNode(BaseModel):
+    id: str  # e.g. "1", "1.2", "1.2.3"
+    level: int  # 1, 2 or 3
+    title: str
+    text: str
+    # Context of numbering:
+    # - "normal" (default)
+    # - "annex4" (נספחים under chapter 4)
+    # - "annex5" (sub-annex after נספח 1 (לנספח א'))
+    context: Optional[str] = None
+    # Group level label for annexes, e.g. "4.1", "4.2", "4.3" or "5.1"...
+    group_level: Optional[str] = None
+    min_area_sqm: Optional[float] = None
+    max_area_sqm: Optional[float] = None
+    min_seats: Optional[int] = None
+    max_seats: Optional[int] = None
+    requires_gas: Optional[bool] = None
+    serves_meat: Optional[bool] = None
+    offers_delivery: Optional[bool] = None
+    children: List["SectionNode"] = Field(default_factory=list)
+
+
+# Rebuild forward refs for recursive model
+SectionNode.model_rebuild()
+
+
 class AIReportRequest(BaseModel):
     business: BusinessInput
     matched: List[Requirement]
@@ -43,6 +69,12 @@ class AIReportRequest(BaseModel):
 
 class AIReportResponse(BaseModel):
     report: str
+
+
+class AIReportStructureRequest(BaseModel):
+    business: BusinessInput
+    nodes: List[SectionNode]
+    language: Optional[str] = Field(default="he")
 
 
 

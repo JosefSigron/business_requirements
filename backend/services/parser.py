@@ -1,23 +1,29 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import List
+from typing import List, Dict, Optional
 import json
 import re
 
 from docx import Document
+import pdfplumber
+from bidi.algorithm import get_display
 
-from ..models import Requirement
+from ..models import Requirement, SectionNode
 
 
 DATA_DIR = Path(__file__).parent.parent / "data" / "processed"
 DATA_DIR.mkdir(parents=True, exist_ok=True)
 JSON_PATH = DATA_DIR / "requirements.json"
-CSV_PATH = DATA_DIR / "requirements.csv"
+STRUCTURE_PATH = DATA_DIR / "structure.json"
 
 
 def _normalize_whitespace(text: str) -> str:
     return re.sub(r"\s+", " ", text).strip()
+
+
+# Note: Do not reorder text at parse time. Store logical (original) text.
+# Rendering should be handled by the client (e.g., dir="rtl" in HTML/CSS).
 
 
 def _extract_requirements_from_docx(docx_path: str) -> List[Requirement]:
@@ -88,22 +94,6 @@ def parse_docx_and_save(docx_path: str) -> List[Requirement]:
     with JSON_PATH.open("w", encoding="utf-8") as f:
         json.dump([r.dict() for r in requirements], f, ensure_ascii=False, indent=2)
 
-    # Save CSV
-    try:
-        import csv
-
-        with CSV_PATH.open("w", encoding="utf-8", newline="") as f:
-            writer = csv.DictWriter(
-                f,
-                fieldnames=list(Requirement.model_fields.keys()),
-            )
-            writer.writeheader()
-            for r in requirements:
-                writer.writerow(r.dict())
-    except Exception:
-        # CSV is best-effort
-        pass
-
     return requirements
 
 
@@ -112,5 +102,228 @@ def load_requirements() -> List[Requirement]:
         return []
     data = json.loads(JSON_PATH.read_text(encoding="utf-8"))
     return [Requirement(**row) for row in data]
+
+
+SECTION_RE = re.compile(r"^(\d+(?:\.\d+){1,2})\.?\s+(.+)$")
+INLINE_L3 = re.compile(r"(\d+\.\d+\.\d+)\.?\s+(.+)")
+ANNEX4_START = "נספחים"
+ANNEX5_START = "נספח 1 (לנספח א')"
+ANNEX5_END = "נספח  ג' - טופס ביקורת תברואית בבית אוכל"
+CHAPTER1_RE = re.compile(r"^פרק\s*1\b")
+CHAPTER5_RE = re.compile(r"^פרק\s*5\b")
+
+
+def _split_inline_headers(line: str) -> List[str]:
+    parts: List[str] = []
+    # Find all occurrences of header tokens anywhere in the line
+    matches = list(re.finditer(r"(\d+(?:\.\d+){1,2})\.?\s+", line))
+    if not matches:
+        return [line]
+    for idx, m in enumerate(matches):
+        start = m.start(1)
+        key = m.group(1)
+        body_start = m.end()
+        body_end = matches[idx + 1].start(1) if idx + 1 < len(matches) else len(line)
+        body_text = line[body_start:body_end].strip()
+        parts.append(f"{key} {body_text}")
+    return parts
+
+
+def _extract_section_tree_from_lines(lines: List[str]) -> List[SectionNode]:
+    roots: Dict[str, SectionNode] = {}
+    level1_stack: Dict[str, SectionNode] = {}
+    level2_stack: Dict[str, SectionNode] = {}
+    context: Optional[str] = None  # None / annex4 / annex5
+    annex4_level = None  # "4.1", "4.2", "4.3"
+    annex5_level = None  # "5.1", "5.2", "5.3"
+
+    def parse_line(text: str) -> Optional[tuple[str, str]]:
+        m = SECTION_RE.match(text)
+        if not m:
+            return None
+        return m.group(1), m.group(2)
+
+    def infer_title(body: str) -> str:
+        words = body.split(" ")
+        return " ".join(words[:8])
+
+    tree: List[SectionNode] = []
+    last_node: Optional[SectionNode] = None
+    i = 0
+    seen_chapter1 = False
+    while i < len(lines):
+        raw_line = lines[i]
+        raw = _normalize_whitespace(raw_line)
+        if not raw:
+            i += 1
+            continue
+        # Skip everything until Chapter 1
+        if not seen_chapter1:
+            if CHAPTER1_RE.search(raw):
+                seen_chapter1 = True
+            else:
+                i += 1
+                continue
+        # Context transitions
+        if raw.startswith(ANNEX4_START):
+            context = "annex4"
+            annex4_level = "4.1"
+            annex5_level = None
+        elif raw.startswith(ANNEX5_START):
+            context = "annex5"
+            annex5_level = "5.1"
+        elif raw.startswith(ANNEX5_END):
+            # end annex5 block, stay under annex4 until chapter 5
+            context = "annex4"
+        elif CHAPTER5_RE.search(raw):
+            # back to normal numbering after chapter 5
+            context = None
+
+        # If a line contains multiple headers inline, split into separate synthetic lines
+        if SECTION_RE.search(raw) and not raw.startswith(tuple([m.group(1) for m in SECTION_RE.finditer(raw)])):
+            # conservative: always split into header segments and process the first now
+            segs = _split_inline_headers(raw)
+            # replace current line with the first segment, insert the rest to be processed next
+            lines[i] = segs[0]
+            for off, seg in enumerate(segs[1:], start=1):
+                lines.insert(i + off, seg)
+            raw = lines[i]
+
+        parsed = parse_line(raw)
+        if not parsed:
+            # append free text to last node if exists
+            if last_node is not None:
+                last_node.text = (last_node.text + " " + raw).strip()
+            i += 1
+            continue
+        key, body = parsed
+        # determine level by number of dots in key
+        dot_count = key.count('.')
+        level = 1 if dot_count == 0 else (2 if dot_count == 1 else 3)
+        # In normal context, ignore level-1 entries entirely (we only care about x.x and x.x.x)
+        if context is None and level == 1:
+            i += 1
+            continue
+        # guard: if body contains any level 2 or level 3 tokens, split them out to new lines
+        inner_matches = list(re.finditer(r"(\d+\.\d+(?:\.\d+)?)\.?\s+", body))
+        if inner_matches:
+            start_idx = 0
+            for idx, m in enumerate(inner_matches):
+                # everything before first inner header stays as current body
+                if idx == 0:
+                    body_before = body[:m.start()].strip()
+                    body = body_before
+                # push subsequent headers as new lines after current index
+                next_key = m.group(1)
+                end_pos = inner_matches[idx + 1].start() if idx + 1 < len(inner_matches) else len(body)
+                seg_body = body[m.end():end_pos].strip()
+                lines.insert(i + 1 + idx, f"{next_key} {seg_body}")
+
+        # heuristics
+        lower = body.lower()
+        offers_delivery = any(k in body for k in ["משלוח", "שליח", "משלוחים"]) or "delivery" in lower
+        serves_meat = any(k in body for k in ["בשר", "מזון מן החי"]) or "meat" in lower
+        requires_gas = any(k in body for k in ["גז"]) or "gas" in lower
+        area_vals = [float(m.group(1)) for m in re.finditer(r"(\d{1,4})\s*(?:מ\"ר|sqm)", body)]
+        seats_vals = [int(m.group(1)) for m in re.finditer(r"(\d{1,4})\s*(?:מקומות|מושבים|seats)", body)]
+        display_body = body
+
+        # set annex group level label by depth
+        if context == "annex4":
+            group_label = "4.2" if level == 2 else ("4.3" if level == 3 else "4.1")
+        elif context == "annex5":
+            group_label = "5.2" if level == 2 else ("5.3" if level == 3 else "5.1")
+        else:
+            group_label = None
+
+        node = SectionNode(
+            id=key,
+            level=level,
+            title=infer_title(display_body),
+            text=display_body,
+            context=context,
+            group_level=group_label,
+            min_area_sqm=min(area_vals) if area_vals else None,
+            max_area_sqm=max(area_vals) if area_vals else None,
+            min_seats=min(seats_vals) if seats_vals else None,
+            max_seats=max(seats_vals) if seats_vals else None,
+            requires_gas=requires_gas or None,
+            serves_meat=serves_meat or None,
+            offers_delivery=offers_delivery or None,
+            children=[],
+        )
+
+        if level == 1:
+            roots[key] = node
+            level1_stack[key] = node
+            tree.append(node)
+        elif level == 2:
+            parent_key = key.rsplit(".", 1)[0]
+            parent = level1_stack.get(parent_key)
+            if parent is None:
+                # orphan; treat as root
+                tree.append(node)
+            else:
+                parent.children.append(node)
+                level2_stack[key] = node
+        else:  # level 3
+            parent_key = key.rsplit(".", 1)[0]
+            parent = level2_stack.get(parent_key)
+            if parent is None:
+                # attach to nearest level 1 if possible
+                parent_key_l1 = key.split(".")[0]
+                parent_l1 = level1_stack.get(parent_key_l1)
+                if parent_l1 is not None:
+                    parent_l1.children.append(node)
+                else:
+                    tree.append(node)
+            else:
+                parent.children.append(node)
+        last_node = node
+        i += 1
+
+    # Sort tree and children by numeric id order
+    def id_key(s: str) -> List[int]:
+        try:
+            return [int(x) for x in s.split('.')]
+        except Exception:
+            return [10**9]
+
+    def sort_nodes(nodes: List[SectionNode]) -> None:
+        nodes.sort(key=lambda n: id_key(n.id))
+        for n in nodes:
+            sort_nodes(n.children)
+
+    sort_nodes(tree)
+    return tree
+
+
+def parse_structure_and_save(file_path: str) -> List[SectionNode]:
+    path = Path(file_path)
+    lines: List[str] = []
+    if path.suffix.lower() == ".txt":
+        text = path.read_text(encoding="utf-8-sig", errors="ignore")
+        lines = text.splitlines()
+    elif path.suffix.lower() == ".pdf":
+        with pdfplumber.open(path) as pdf:
+            for page in pdf.pages:
+                text = page.extract_text() or ""
+                for line in text.splitlines():
+                    lines.append(line)
+    else:
+        doc = Document(str(path))
+        for p in doc.paragraphs:
+            lines.append(p.text)
+    tree = _extract_section_tree_from_lines(lines)
+    with STRUCTURE_PATH.open("w", encoding="utf-8") as f:
+        json.dump([n.dict() for n in tree], f, ensure_ascii=False, indent=2)
+    return tree
+
+
+def load_structure() -> List[SectionNode]:
+    if not STRUCTURE_PATH.exists():
+        return []
+    data = json.loads(STRUCTURE_PATH.read_text(encoding="utf-8"))
+    return [SectionNode(**row) for row in data]
 
 

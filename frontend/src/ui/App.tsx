@@ -22,6 +22,23 @@ type BusinessInput = {
   offers_delivery: boolean
 }
 
+type SectionNode = {
+  id: string
+  level: number
+  title: string
+  text: string
+  context?: string | null
+  group_level?: string | null
+  min_area_sqm?: number | null
+  max_area_sqm?: number | null
+  min_seats?: number | null
+  max_seats?: number | null
+  requires_gas?: boolean | null
+  serves_meat?: boolean | null
+  offers_delivery?: boolean | null
+  children: SectionNode[]
+}
+
 const API_URL = (import.meta as any).env.VITE_API_URL || 'http://127.0.0.1:8000'
 
 export const App: React.FC = () => {
@@ -35,6 +52,8 @@ export const App: React.FC = () => {
   const [requirements, setRequirements] = useState<Requirement[]>([])
   const [matched, setMatched] = useState<Requirement[]>([])
   const [report, setReport] = useState<string>('')
+  const [tree, setTree] = useState<SectionNode[]>([])
+  const [matchedTree, setMatchedTree] = useState<SectionNode[]>([])
   const [loading, setLoading] = useState<boolean>(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -77,6 +96,56 @@ export const App: React.FC = () => {
     } finally { setLoading(false) }
   }
 
+  const loadStructure = async () => {
+    setLoading(true); setError(null)
+    try {
+      const res = await fetch(`${API_URL}/structure`)
+      const data = await res.json()
+      setTree(data.nodes || [])
+    } catch (e: any) {
+      setError(e?.message || 'שגיאה בטעינת מבנה')
+    } finally { setLoading(false) }
+  }
+
+  const matchStructure = async () => {
+    setLoading(true); setError(null)
+    try {
+      const res = await fetch(`${API_URL}/structure-match`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(form) })
+      const data = await res.json()
+      setMatchedTree(data.nodes || [])
+    } catch (e: any) {
+      setError(e?.message || 'שגיאה בסינון מבנה')
+    } finally { setLoading(false) }
+  }
+
+  const reportFromStructure = async () => {
+    setLoading(true); setError(null)
+    try {
+      const res = await fetch(`${API_URL}/ai-report-structure`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ business: form, nodes: matchedTree, language: 'he' }) })
+      const data = await res.json()
+      setReport(data.report)
+    } catch (e: any) {
+      setError(e?.message || 'שגיאה ביצירת דוח מסעיפים')
+    } finally { setLoading(false) }
+  }
+
+  const NodeView: React.FC<{ node: SectionNode }> = ({ node }) => {
+    const [open, setOpen] = useState<boolean>(false)
+    const hasKids = node.children && node.children.length > 0
+    return (
+      <li>
+        <div style={{ cursor: hasKids ? 'pointer' : 'default' }} onClick={() => hasKids && setOpen(!open)}>
+          <b>[{node.id}] {node.title}</b> — {node.text}
+        </div>
+        {hasKids && open && (
+          <ul>
+            {node.children.map(c => <NodeView key={c.id} node={c} />)}
+          </ul>
+        )}
+      </li>
+    )
+  }
+
   return (
     <div style={{ fontFamily: 'sans-serif', maxWidth: 900, margin: '2rem auto', lineHeight: 1.5 }}>
       <h1>מערכת הערכת רישוי עסקים</h1>
@@ -91,6 +160,9 @@ export const App: React.FC = () => {
           <button onClick={fetchRequirements}>טען דרישות</button>
           <button onClick={runMatch}>התאם</button>
           <button onClick={runReport}>צור דוח AI</button>
+          <button onClick={loadStructure}>טען מבנה</button>
+          <button onClick={matchStructure}>סנן מבנה</button>
+          <button onClick={reportFromStructure}>דוח AI מסעיפים</button>
         </div>
         {loading && <div>טוען…</div>}
         {error && <div style={{ color: 'red' }}>{error}</div>}
@@ -111,6 +183,20 @@ export const App: React.FC = () => {
           {matched.slice(0, 20).map(r => (
             <li key={r.id}><b>{r.title}</b> — {r.description}</li>
           ))}
+        </ul>
+      </section>
+
+      <section style={{ marginTop: 24 }}>
+        <h2>מבנה מסמך (עץ)</h2>
+        <ul>
+          {tree.map(n => <NodeView key={n.id} node={n} />)}
+        </ul>
+      </section>
+
+      <section style={{ marginTop: 24 }}>
+        <h2>מבנה מסונן</h2>
+        <ul>
+          {matchedTree.map(n => <NodeView key={n.id} node={n} />)}
         </ul>
       </section>
 

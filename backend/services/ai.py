@@ -3,7 +3,7 @@ from __future__ import annotations
 import os
 from typing import List
 
-from ..models import AIReportRequest, Requirement
+from ..models import AIReportRequest, Requirement, AIReportStructureRequest, SectionNode
 
 
 def _build_prompt(payload: AIReportRequest) -> str:
@@ -88,6 +88,65 @@ def generate_ai_report(payload: AIReportRequest) -> str:
 
     # If OPENAI_API_KEY present, optionally enrich (placeholder to keep no-op by default)
     # This is where you'd call an external API.
+    return "\n".join(lines)
+
+
+def _build_prompt_from_nodes(payload: AIReportStructureRequest) -> str:
+    b = payload.business
+    parts: List[str] = []
+    for n in payload.nodes:
+        parts.append(f"- [{n.id}] {n.title}: {n.text}")
+    lang = payload.language or "he"
+    if lang.lower().startswith("he"):
+        header = (
+            "אתה מסייע רישוי עסקים. צור דוח ברור בעברית על סמך סעיפים מובנים.\n"
+            f"פרטי העסק: שטח {b.area_sqm} מ" + '"' + f"ר, {b.seats} מקומות, גז: {b.uses_gas}, בשר: {b.serves_meat}, משלוחים: {b.offers_delivery}.\n"
+        )
+    else:
+        header = (
+            "You are a licensing assistant. Write a clear structured report based on provided sections.\n"
+            f"Business: area {b.area_sqm} sqm, {b.seats} seats, gas: {b.uses_gas}, meat: {b.serves_meat}, delivery: {b.offers_delivery}.\n"
+        )
+    return header + "\n".join(parts)
+
+
+def generate_ai_report_from_nodes(payload: AIReportStructureRequest) -> str:
+    prompt = _build_prompt_from_nodes(payload)
+    api_key = os.getenv("OPENAI_API_KEY")
+    if api_key:
+        try:
+            from openai import OpenAI  # type: ignore
+
+            client = OpenAI(api_key=api_key)
+            completion = client.chat.completions.create(
+                model="gpt-4o-mini",
+                messages=[
+                    {"role": "system", "content": "You write clear, structured licensing reports."},
+                    {"role": "user", "content": prompt},
+                ],
+                temperature=0.2,
+                max_tokens=900,
+            )
+            content = completion.choices[0].message.content or ""
+            if isinstance(content, list):
+                content = "".join([p.get("text", "") if isinstance(p, dict) else str(p) for p in content])
+            if content:
+                return content
+        except Exception:
+            pass
+
+    # offline fallback
+    b = payload.business
+    lines: List[str] = [
+        "דוח התאמה (סעיפים מובנים)",
+        "===========================",
+        "",
+        f"שטח: {b.area_sqm} מ" + '"' + f"ר | מקומות: {b.seats} | גז: {b.uses_gas} | בשר: {b.serves_meat} | משלוחים: {b.offers_delivery}",
+        "",
+        "סעיפים רלוונטיים:",
+    ]
+    for n in payload.nodes[:20]:
+        lines.append(f"- [{n.id}] {n.title}: {n.text[:200]}…")
     return "\n".join(lines)
 
 
