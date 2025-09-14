@@ -41,36 +41,62 @@ npm run dev
 ## Architecture
 ```mermaid
 flowchart LR
-  subgraph Frontend [React + Vite]
-    UI[Questionnaire • Matched Tree • AI Report]
+  subgraph Frontend ["React + Vite"]
+    UI["Questionnaire • Matched Tree • AI Report"]
   end
 
-  subgraph Backend [FastAPI]
-    P[Structure Parser (TXT→JSON)]
-    S[(structure.json)]
-    L[/GET /structure/]
-    M[/POST /structure-match/]
-    R[/POST /ai-report-structure/]
-    AI[AI Service (OpenAI)]
+  subgraph Backend ["FastAPI"]
+    C["PDF Converter"]
+    P["Structure Parser (TXT→JSON)"]
+    S[("structure.json")]
+    L["/GET /structure/"]
+    M["/POST /structure-match/"]
+    R["/POST /ai-report-structure/"]
+    AI["AI Service (OpenAI)"]
   end
 
-  Source[TXT source file] --> P
+  PDF["18-07-2022_4.2A.pdf"] --> C
+  C --> TXT["18-07-2022_4.2A.txt"]
+  TXT --> P
   P --> S
   L --> S
   M --> S
   R --> AI
 
-  UI -->|GET /structure| L
-  UI -->|POST /structure-match| M
-  UI -->|POST /ai-report-structure| R
+  UI -->|"GET /structure"| L
+  UI -->|"POST /structure-match"| M
+  UI -->|"POST /ai-report-structure"| R
 
-  Env[.env OPENAI_API_KEY] -.-> AI
+  Env[".env OPENAI_API_KEY"] -.-> AI
 ```
 
-## Data processing (TXT → JSON)
-- Place `18-07-2022_4.2A.txt` at project root.
-- Build hierarchical structure: call `POST /parse-structure` (TXT-only).
-  - Output: `backend/data/processed/structure.json`
+## Data processing (PDF/DOCX → TXT → JSON)
+
+### PDF to TXT Conversion
+The system includes a dedicated PDF to TXT converter (`backend/pdf_converter.py`) that processes the original PDF file:
+
+- **Original source**: `18-07-2022_4.2A.pdf` (Hebrew licensing requirements)
+- **Converter implementation**: `backend/pdf_converter.py` using `pdfplumber` library
+- **Usage**: 
+  ```powershell
+  cd backend
+  python pdf_converter.py  # Uses default paths
+  # OR specify custom paths:
+  python pdf_converter.py path/to/input.pdf path/to/output.txt
+  ```
+- **Benefits of TXT format**:
+  - Simplified text parsing without complex PDF extraction libraries
+  - Better handling of Hebrew RTL text and special characters
+  - Easier debugging and validation of parsing logic
+  - More reliable extraction of hierarchical numbering patterns
+
+### Processing Pipeline
+1. **PDF → TXT**: Convert the source PDF to plain text format using `backend/pdf_converter.py`
+2. **TXT normalization**: Clean spacing, handle RTL text, preserve numbering
+3. **TXT → JSON**: Parse hierarchical structure and build structured data
+   - Place `18-07-2022_4.2A.txt` at project root
+   - Call `POST /parse-structure` (TXT-only)
+   - Output: `backend/data/processed/structure.json`
 
 ## Data schema (simplified)
 
@@ -172,7 +198,7 @@ Response: { report: string }
 
 ## AI usage and prompts
 - Tools used: Cursor AI for development; OpenAI API for reporting.
-- Model: `gpt-4o-mini` (balanced cost/quality/latency), temperature `0.3` for consistent structure.
+- Model: `gpt-5` - Latest model of OpenAI, which yields great results. note: might take some time to generate the response.
 - System message (Hebrew, abridged): “אתה יועץ רישוי עסקים… דוח מקצועי בעברית… קטגוריות, עדיפויות והמלצות פעולה… הימנע משפה משפטית”.
 - User prompt includes:
   1) Business profile (area, seats, gas/meat/delivery)

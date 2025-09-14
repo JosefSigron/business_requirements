@@ -36,7 +36,7 @@ def _extract_text_from_choice(choice) -> str:
 
 
 def _complete_with_openai(prompt: str) -> str:
-    """Call OpenAI and return the text. Raise on any failure."""
+    """Call OpenAI (Responses API) and return the text. Raise on any failure."""
     api_key = os.getenv("OPENAI_API_KEY")
     if not api_key:
         raise RuntimeError("OPENAI_API_KEY is not set")
@@ -44,24 +44,38 @@ def _complete_with_openai(prompt: str) -> str:
         from openai import OpenAI  # type: ignore
 
         client = OpenAI(api_key=api_key)
-        completion = client.chat.completions.create(
-            model="gpt-4o-mini",
-            messages=[
+        response = client.responses.create(
+            model="gpt-5",
+            input=[
                 {
                     "role": "system",
-                    "content": (
-                        "אתה יועץ רישוי עסקים. צור דוח מקצועי וברור בעברית, מותאם לעסק, עם קטגוריות, עדיפויות והמלצות פעולה. הימנע משפה משפטית; השתמש במונחים עסקיים פשוטים וברורים. השב בעברית בלבד."
-                    ),
+                    "content": [
+                        {
+                            "type": "input_text",
+                            "text": "אתה יועץ רישוי עסקים. צור דוח מקצועי וברור בעברית, מותאם לעסק, עם קטגוריות, עדיפויות והמלצות פעולה. הימנע משפה משפטית; השתמש במונחים עסקיים פשוטים וברורים. השב בעברית בלבד.",
+                        }
+                    ],
                 },
-                {"role": "user", "content": prompt},
+                {"role": "user", "content": [{"type": "input_text", "text": prompt}]},
             ],
-            max_tokens=900,
-            temperature=0.3,
         )
-        text = ""
-        if completion and getattr(completion, "choices", None):
-            text = _extract_text_from_choice(completion.choices[0])
-        text = (text or "").strip()
+
+        # Prefer the SDK helper if available
+        text: str = getattr(response, "output_text", "") or ""
+        if not text:
+            # Fallback: traverse response.output content parts
+            parts: List[str] = []
+            output = getattr(response, "output", None)
+            if output:
+                for item in output:
+                    content = getattr(item, "content", None) or []
+                    for c in content:
+                        t = getattr(c, "text", None)
+                        if t is not None:
+                            val = getattr(t, "value", None)
+                            if isinstance(val, str):
+                                parts.append(val)
+            text = "".join(parts).strip()
         if not text:
             raise RuntimeError("OpenAI returned empty response text")
         return text
