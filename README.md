@@ -10,7 +10,7 @@ An end-to-end system that parses restaurant licensing requirements (Hebrew sourc
 ## Tech stack and versions
 - Backend: FastAPI (Python)
   - Dependencies: see `backend/requirements.txt`
-  - Notable versions: fastapi 0.115.2, uvicorn 0.30.6, pydantic 2.9.2, python-docx 1.1.2, pdfplumber 0.11.4, python-dotenv 1.0.1, python-bidi 0.4.2, openai ≥ 1.40.0
+  - Notable versions: fastapi 0.115.2, uvicorn 0.30.6, pydantic 2.9.2, python-dotenv 1.0.1, python-bidi 0.4.2, openai ≥ 1.40.0
 - Frontend: React 19 + Vite
 - AI: OpenAI API (if `OPENAI_API_KEY` provided)
 
@@ -46,22 +46,20 @@ flowchart LR
   end
 
   subgraph Backend [FastAPI]
-    P[Parser] --> Data[(Processed JSON)]
-    M[Matcher]
+    P[Structure Parser] --> S[(structure.json)]
+    MA[Structure Matcher]
     AI[AI Service]
   end
 
-  Source[PDF/DOCX] --> P
-  UI -->|/requirements /structure /match /structure-match| Backend
-  UI -->|/ai-report /ai-report-structure| AI
-  Data --> M
-  Data --> UI
+  Source[TXT] --> P
+  UI -->|/structure /structure-match| Backend
+  UI -->|/ai-report-structure| AI
+  S --> MA
+  S --> UI
 ```
 
 ## Data processing (TXT → JSON)
 - Place `18-07-2022_4.2A.txt` at project root.
-- Build flat list: call `POST /parse-text` (also available via Swagger UI).
-  - Output: `backend/data/processed/requirements.json`
 - Build hierarchical structure: call `POST /parse-structure` (TXT-only).
   - Output: `backend/data/processed/structure.json`
 
@@ -75,23 +73,6 @@ BusinessInput
   "uses_gas": false,
   "serves_meat": true,
   "offers_delivery": true
-}
-```
-
-Requirement
-```json
-{
-  "id": "4.2.1",
-  "title": "כיבוי אש",
-  "description": "דרישות כיבוי אש למטבח …",
-  "min_area_sqm": 50,
-  "max_area_sqm": 200,
-  "min_seats": 20,
-  "max_seats": 80,
-  "requires_gas": true,
-  "serves_meat": null,
-  "offers_delivery": null,
-  "category": "בטיחות"
 }
 ```
 
@@ -204,11 +185,6 @@ Example (structure mode, truncated):
     - [2.7.1.5.8] …
 ```
 
-## Screenshots (suggested)
-- Questionnaire view
-- Matched requirements (tree)
-- AI report view
-
 ## 4. למידה ושיפורים
 
 ### יומן פיתוח
@@ -218,13 +194,13 @@ Example (structure mode, truncated):
 - פרסינג של טקסט בעברית: עברית היא שפה מימין לשמאל ומערבת גרשיים/מירכאות ומספור מעורב. נדרש נרמול רווחים, טיפול ב‑RTL, ושמירה על אותיות מיוחדות כדי למנוע טעויות בזיהוי תבניות.
 - סדר היררכי כשיש כמה שיטות מספור במקביל: בקובץ הופיעו גם פרקים/סעיפים (1, 1.2, 1.2.3) וגם נספחים/קבוצות. הוספתי הקשר (context/group_level) ושיפרתי את המיפוי לעץ כך שהמספור יישמר ויהיה ניתן לשחזר את הסדר הנכון. לבסוף, ביצעתי פריסה עומק‑קודם (DFS) כדי לכלול אוטומטית גם תתי‑סעיפים בדוח ה‑AI.
 
-מהעבודה הזו למדתי שכדאי להעדיף כללים פשוטים וברורים להתאמה, ואז לתת ל‑AI לזקק את התוצאה לשפה עסקית. כשה‑AI מקבל קלט מסודר וברור (כולל כל הצאצאים הרלוונטיים), האיכות של הדוח קופצת משמעותית.
+מהעבודה הזו למדתי שכדאי להעדיף כללים פשוטים וברורים להתאמה, ואז לתת ל‑AI לזקק את התוצאה לשפה עסקית. כשה‑AI מקבל קלט מסודר וברור , האיכות של הדוח קופצת משמעותית.
 
 ### שיפורים עתידיים
 - ייצוא דוח ל‑PDF/HTML וכפתור "העתק" מהיר
 - תצוגת "למה זה הותאם" לכל סעיף (הסבר קצר)
-- אפשרות להוסיף סעיף "כללי לכל עסק" (מכובה כברירת מחדל)
-- אפשרות בחירת מודל/שפה וזרע לדטרמיניזם
+- אפשרות להוסיף סעיף "כללי לכל עסק"
+- אפשרות בחירת מודל/שפה
 - Docker Compose להרצה בלחיצה אחת
 
 ### לקחים
@@ -232,5 +208,3 @@ Example (structure mode, truncated):
 - אין תחליף לדאטה נקי: פרסינג טוב והיררכיה נאמנה למקור משפיעים ישירות על איכות ה‑AI.
 - הפרדה בין התאמה דטרמיניסטית (מנוע כללים) ליצירת ניסוח (LLM) מייצרת שקיפות ויציבות טובות יותר.
 
-## License
-MIT

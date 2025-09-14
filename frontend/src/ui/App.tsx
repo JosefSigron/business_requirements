@@ -1,18 +1,6 @@
-import React, { useMemo, useState } from 'react'
+import React, { useState } from 'react'
 
-type Requirement = {
-  id: string
-  title: string
-  description: string
-  min_area_sqm?: number | null
-  max_area_sqm?: number | null
-  min_seats?: number | null
-  max_seats?: number | null
-  requires_gas?: boolean | null
-  serves_meat?: boolean | null
-  offers_delivery?: boolean | null
-  category?: string | null
-}
+// Removed flat Requirement type
 
 type BusinessInput = {
   area_sqm: number
@@ -49,8 +37,7 @@ export const App: React.FC = () => {
     serves_meat: true,
     offers_delivery: true,
   })
-  const [requirements, setRequirements] = useState<Requirement[]>([])
-  const [matched, setMatched] = useState<Requirement[]>([])
+  // Removed flat requirements state
   const [report, setReport] = useState<string>('')
   const [tree, setTree] = useState<SectionNode[]>([])
   const [matchedTree, setMatchedTree] = useState<SectionNode[]>([])
@@ -63,38 +50,9 @@ export const App: React.FC = () => {
     setForm(prev => ({ ...prev, [name]: type === 'number' ? Number(value) : value }))
   }
 
-  const fetchRequirements = async () => {
-    setLoading(true); setError(null)
-    try {
-      const res = await fetch(`${API_URL}/requirements`)
-      const data = await res.json()
-      setRequirements(data)
-    } catch (e: any) {
-      setError(e?.message || 'שגיאה בטעינת דרישות')
-    } finally { setLoading(false) }
-  }
+  // Removed flat requirements fetch/match
 
-  const runMatch = async () => {
-    setLoading(true); setError(null)
-    try {
-      const res = await fetch(`${API_URL}/match`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(form) })
-      const data = await res.json()
-      setMatched(data.matched)
-    } catch (e: any) {
-      setError(e?.message || 'שגיאה בהתאמה')
-    } finally { setLoading(false) }
-  }
-
-  const runReport = async () => {
-    setLoading(true); setError(null)
-    try {
-      const res = await fetch(`${API_URL}/ai-report`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ business: form, matched, language: 'he' }) })
-      const data = await res.json()
-      setReport(data.report)
-    } catch (e: any) {
-      setError(e?.message || 'שגיאה ביצירת דוח')
-    } finally { setLoading(false) }
-  }
+  // Removed flat AI report
 
   const loadStructure = async () => {
     setLoading(true); setError(null)

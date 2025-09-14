@@ -1,6 +1,6 @@
 from typing import List, Dict
 
-from ..models import BusinessInput, Requirement, SectionNode
+from ..models import BusinessInput, SectionNode
 import re
 
 
@@ -18,21 +18,7 @@ def _bool_match(user_value: bool, req_value: bool | None) -> bool:
     return user_value == req_value
 
 
-def match_requirements(business: BusinessInput, requirements: List[Requirement]) -> List[Requirement]:
-    matched: List[Requirement] = []
-    for req in requirements:
-        if not _within_range(business.area_sqm, req.min_area_sqm, req.max_area_sqm):
-            continue
-        if not _within_range(business.seats, req.min_seats, req.max_seats):
-            continue
-        if not _bool_match(business.uses_gas, req.requires_gas):
-            continue
-        if not _bool_match(business.serves_meat, req.serves_meat):
-            continue
-        if not _bool_match(business.offers_delivery, req.offers_delivery):
-            continue
-        matched.append(req)
-    return matched
+# Removed flat requirements matching
 
 
 def _node_matches_business(business: BusinessInput, node: SectionNode) -> bool:

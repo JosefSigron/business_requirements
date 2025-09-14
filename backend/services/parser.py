@@ -7,12 +7,11 @@ import re
 
 from bidi.algorithm import get_display
 
-from ..models import Requirement, SectionNode
+from ..models import SectionNode
 
 
 DATA_DIR = Path(__file__).parent.parent / "data" / "processed"
 DATA_DIR.mkdir(parents=True, exist_ok=True)
-JSON_PATH = DATA_DIR / "requirements.json"
 STRUCTURE_PATH = DATA_DIR / "structure.json"
 
 
@@ -24,70 +23,13 @@ def _normalize_whitespace(text: str) -> str:
 # Rendering should be handled by the client (e.g., dir="rtl" in HTML/CSS).
 
 
-def _extract_requirements_from_txt(txt_path: str) -> List[Requirement]:
-    text = Path(txt_path).read_text(encoding="utf-8-sig", errors="ignore")
-    lines = [l.strip() for l in text.splitlines()]
-    items: List[Requirement] = []
-    counter = 0
-    for raw in lines:
-        raw = _normalize_whitespace(raw)
-        if not raw:
-            continue
-        counter += 1
-        title_text = " ".join(raw.split(" ")[:8])
-        lower = raw.lower()
-        offers_delivery = any(k in raw for k in ["משלוח", "שליח", "משלוחים"]) or "delivery" in lower
-        serves_meat = any(k in raw for k in ["בשר", "מזון מן החי"]) or "meat" in lower
-        requires_gas = any(k in raw for k in ["גז"]) or "gas" in lower
-        area_min = None
-        area_max = None
-        seats_min = None
-        seats_max = None
-        for match in re.finditer(r"(\d{1,4})\s*(?:מ\"ר|sqm)", raw):
-            value = float(match.group(1))
-            if area_min is None or value < area_min:
-                area_min = value
-            if area_max is None or value > area_max:
-                area_max = value
-        for match in re.finditer(r"(\d{1,4})\s*(?:מקומות|מושבים|seats)", raw):
-            value_i = int(match.group(1))
-            if seats_min is None or value_i < seats_min:
-                seats_min = value_i
-            if seats_max is None or value_i > seats_max:
-                seats_max = value_i
-        items.append(
-            Requirement(
-                id=f"req-{counter}",
-                title=title_text,
-                description=raw,
-                min_area_sqm=area_min,
-                max_area_sqm=area_max,
-                min_seats=seats_min,
-                max_seats=seats_max,
-                requires_gas=requires_gas or None,
-                serves_meat=serves_meat or None,
-                offers_delivery=offers_delivery or None,
-                category=None,
-            )
-        )
-    return items
+# Removed flat TXT requirements extraction (structure-only)
 
 
-def parse_txt_and_save(txt_path: str) -> List[Requirement]:
-    requirements = _extract_requirements_from_txt(txt_path)
-
-    # Save JSON
-    with JSON_PATH.open("w", encoding="utf-8") as f:
-        json.dump([r.dict() for r in requirements], f, ensure_ascii=False, indent=2)
-
-    return requirements
+# Removed flat TXT save (structure-only)
 
 
-def load_requirements() -> List[Requirement]:
-    if not JSON_PATH.exists():
-        return []
-    data = json.loads(JSON_PATH.read_text(encoding="utf-8"))
-    return [Requirement(**row) for row in data]
+# Removed flat requirements loader (structure-only)
 
 
 SECTION_RE = re.compile(r"^(\d+(?:\.\d+){1,5})\.?\s+(.+)$")

@@ -3,7 +3,7 @@ from __future__ import annotations
 import os
 from typing import List
 
-from ..models import AIReportRequest, Requirement, AIReportStructureRequest, SectionNode
+from ..models import AIReportStructureRequest, SectionNode
 
 
 def _extract_text_from_choice(choice) -> str:
@@ -32,60 +32,7 @@ def _extract_text_from_choice(choice) -> str:
     return ""
 
 
-def _build_prompt(payload: AIReportRequest) -> str:
-    b = payload.business
-    req_lines = []
-    for r in payload.matched:
-        req_lines.append(f"- {r.title}: {r.description}")
-
-    lang = payload.language or "he"
-    if lang.lower().startswith("he"):
-        header = (
-            "פרטי העסק: "
-            f'שטח {b.area_sqm} מ"ר, {b.seats} מקומות ישיבה, שימוש בגז: {b.uses_gas}, מגיש בשר: {b.serves_meat}, משלוחים: {b.offers_delivery}.\n\n'
-        )
-        guidelines = (
-            "הנחיות הפקה:\n"
-            "- כתיבה בעברית ברורה ונגישה (ללא שפה משפטית).\n"
-            "- התאמה אישית למאפייני העסק.\n"
-            "- עיבוד חכם של הדרישות למידע ברור ומסודר.\n"
-            "- ארגון לקטגוריות (בטיחות, תשתיות, תפעול, סביבתיות, רשות מקומית וכו').\n"
-            "- קביעת עדיפויות: גבוהה/בינונית/נמוכה עם נימוק קצר.\n"
-            "- המלצות פעולה קונקרטיות (צעדים, אחריות, תלות/תנאים).\n\n"
-        )
-        template = (
-            "תבנית נדרשת:\n"
-            "1) סיכום מנהלים קצר (3–5 נקודות).\n"
-            "2) דרישות לפי קטגוריות עם עדיפויות ורציונל.\n"
-            "3) תוכנית פעולה: צ'קליסט לביצוע (שלבים, תלות, אחריות).\n"
-            "4) סיכונים/הערות מיוחדות.\n"
-            "5) מידע חסר/הנחות עבודה.\n\n"
-        )
-        data_block = "דרישות גולמיות לניתוח:\n" + "\n".join(req_lines)
-        return header + guidelines + template + data_block
-    else:
-        header = (
-            "Business profile: "
-            f"area {b.area_sqm} sqm, {b.seats} seats, uses gas: {b.uses_gas}, serves meat: {b.serves_meat}, delivery: {b.offers_delivery}.\n\n"
-        )
-        guidelines = (
-            "Guidelines:\n"
-            "- Clear, accessible business language (avoid legalese).\n"
-            "- Personalize to the business profile.\n"
-            "- Organize into categories (Safety, Infrastructure, Operations, Environmental, Municipality, etc.).\n"
-            "- Assign priorities (High/Medium/Low) with brief rationale.\n"
-            "- Provide actionable recommendations (steps, ownership, dependencies).\n\n"
-        )
-        template = (
-            "Required format:\n"
-            "1) Executive summary (3–5 bullets).\n"
-            "2) Requirements by category with priorities and rationale.\n"
-            "3) Action plan checklist (steps, dependencies, ownership).\n"
-            "4) Risks/Notes.\n"
-            "5) Missing info/Assumptions.\n\n"
-        )
-        data_block = "Raw requirements to analyze:\n" + "\n".join(req_lines)
-        return header + guidelines + template + data_block
+# Removed flat requirements prompt; structure-based prompt used instead
 
 
 def _complete_with_openai(prompt: str) -> str:
@@ -122,9 +69,7 @@ def _complete_with_openai(prompt: str) -> str:
         raise RuntimeError(f"OpenAI call failed: {e}")
 
 
-def generate_ai_report(payload: AIReportRequest) -> str:
-    prompt = _build_prompt(payload)
-    return _complete_with_openai(prompt)
+# Removed flat-report generation; use generate_ai_report_from_nodes
 
 
 def _flatten_nodes_depth_first(nodes: List[SectionNode]) -> List[SectionNode]:
