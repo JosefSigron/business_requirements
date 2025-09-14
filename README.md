@@ -197,8 +197,8 @@ Response: { report: string }
 ```
 
 ## AI usage and prompts
-- Tools used: Cursor AI for development; OpenAI API for reporting.
-- Model: `gpt-5` - Latest model of OpenAI, which yields great results. note: might take some time to generate the response.
+- Tools used: Cursor AI using gpt-5 and claude-4-sonnet for development; OpenAI API for reporting.
+- Model for reporting: `gpt-5` - Latest model of OpenAI, which yields great results. note: might take some time to generate the response.
 - System message (Hebrew, abridged): “אתה יועץ רישוי עסקים… דוח מקצועי בעברית… קטגוריות, עדיפויות והמלצות פעולה… הימנע משפה משפטית”.
 - User prompt includes:
   1) Business profile (area, seats, gas/meat/delivery)
@@ -207,7 +207,7 @@ Response: { report: string }
   4) Matched items (for structure: all descendants flattened with indentation)
 
 Example (structure mode, truncated):
-```text
+```text 
 פרטי העסק: שטח 80 מ"ר, 40 מקומות ישיבה, שימוש בגז: false, מגיש בשר: true, משלוחים: true.
 
 הנחיות הפקה:
@@ -242,4 +242,12 @@ Example (structure mode, truncated):
 - הגדרת פרומפטים ברורה ומבנית (Guidelines + Template) מביאה פער איכות מורגש.
 - אין תחליף לדאטה נקי: פרסינג טוב והיררכיה נאמנה למקור משפיעים ישירות על איכות ה‑AI.
 - הפרדה בין התאמה דטרמיניסטית (מנוע כללים) ליצירת ניסוח (LLM) מייצרת שקיפות ויציבות טובות יותר.
+
+## Screenshots
+
+![Questionnaire](screenshots/s1.png)
+
+![Matched Tree](screenshots/s2.png)
+
+![AI Report](screenshots/s3.png)
 

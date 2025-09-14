@@ -30,6 +30,7 @@ type SectionNode = {
 const API_URL = (import.meta as any).env.VITE_API_URL || 'http://127.0.0.1:8000'
 
 export const App: React.FC = () => {
+  // Business form state (used for matching and AI)
   const [form, setForm] = useState<BusinessInput>({
     area_sqm: 80,
     seats: 40,
@@ -44,6 +45,7 @@ export const App: React.FC = () => {
   const [loading, setLoading] = useState<boolean>(false)
   const [error, setError] = useState<string | null>(null)
 
+  // Unified change handler for inputs and checkboxes
   const onChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, type } = e.target
     const value = type === 'checkbox' ? (e.target as HTMLInputElement).checked : e.target.value
@@ -54,6 +56,7 @@ export const App: React.FC = () => {
 
   // Removed flat AI report
 
+  // Load the full parsed structure from the backend
   const loadStructure = async () => {
     setLoading(true); setError(null)
     try {
@@ -65,6 +68,7 @@ export const App: React.FC = () => {
     } finally { setLoading(false) }
   }
 
+  // Request a pruned structure that matches current form
   const matchStructure = async () => {
     setLoading(true); setError(null)
     try {
@@ -76,6 +80,7 @@ export const App: React.FC = () => {
     } finally { setLoading(false) }
   }
 
+  // Ask backend to generate an AI report from matched structure
   const reportFromStructure = async () => {
     setLoading(true); setError(null)
     try {
@@ -87,6 +92,7 @@ export const App: React.FC = () => {
     } finally { setLoading(false) }
   }
 
+  // Recursive tree view for matched nodes
   const NodeView: React.FC<{ node: SectionNode }> = ({ node }) => {
     const [open, setOpen] = useState<boolean>(true)
     const hasKids = node.children && node.children.length > 0
