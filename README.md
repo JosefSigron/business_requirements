@@ -46,7 +46,7 @@ flowchart LR
   end
 
   subgraph Backend [FastAPI]
-    P[Structure Parser (TXT to JSON)]
+    P["Structure Parser TXT→JSON"]
     S[(structure.json)]
     GETSTRUCT[GET /structure]
     POSTMATCH[POST /structure-match]
