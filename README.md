@@ -41,20 +41,20 @@ npm run dev
 ## Architecture
 ```mermaid
 flowchart LR
-  subgraph Frontend [React + Vite]
-    UI[Questionnaire, Matched Tree, AI Report]
+  subgraph Frontend ["React + Vite"]
+    UI["Questionnaire, Matched Tree, AI Report"]
   end
 
-  subgraph Backend [FastAPI]
+  subgraph Backend ["FastAPI"]
     P["Structure Parser TXT→JSON"]
     S[(structure.json)]
     GETSTRUCT[GET /structure]
     POSTMATCH[POST /structure-match]
     POSTAI[POST /ai-report-structure]
-    AI[AI Service (OpenAI)]
+    AI["AI Service (OpenAI)"]
   end
 
-  Source[TXT source file] --> P
+  Source["TXT source file"] --> P
   P --> S
   GETSTRUCT --> S
   POSTMATCH --> S
@@ -64,7 +64,7 @@ flowchart LR
   UI --> POSTMATCH
   UI --> POSTAI
 
-  Env[.env OPENAI_API_KEY] -.-> AI
+  Env[".env OPENAI_API_KEY"] -.-> AI
 ```
 
 ## Data processing (TXT → JSON)
