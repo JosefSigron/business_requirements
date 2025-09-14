@@ -7,6 +7,7 @@ import pdfplumber
 import os
 from pathlib import Path
 from typing import Optional
+from bidi.algorithm import get_display
 
 
 def pdf_to_txt(pdf_path: str, txt_path: Optional[str] = None) -> str:
@@ -48,13 +49,19 @@ def pdf_to_txt(pdf_path: str, txt_path: Optional[str] = None) -> str:
                 
                 # Extract text from page
                 text = page.extract_text()
-                
+
                 if text:
-                    # Clean up the text (remove excessive whitespace, normalize line breaks)
-                    text = text.strip()
-                    if text:
-                        extracted_text.append(text)
-                        extracted_text.append('\n')  # Add page separator
+                    # Normalize and split to lines for RTL handling
+                    lines = [l.strip() for l in (text.replace('\r\n', '\n').replace('\r', '\n')).split('\n')]
+                    for line in lines:
+                        if not line:
+                            extracted_text.append('\n')
+                            continue
+                        # If the line contains Hebrew chars, reorder visually (RTL)
+                        if any('\u0590' <= ch <= '\u05FF' for ch in line):
+                            line = get_display(line)
+                        extracted_text.append(line)
+                        extracted_text.append('\n')
         
         # Join all text and clean up
         full_text = ''.join(extracted_text)
