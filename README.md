@@ -42,15 +42,15 @@ npm run dev
 ```mermaid
 flowchart LR
   subgraph Frontend [React + Vite]
-    UI[Questionnaire • Matched Tree • AI Report]
+    UI[Questionnaire / Matched Tree / AI Report]
   end
 
   subgraph Backend [FastAPI]
-    P[Structure Parser (TXT→JSON)]
-    S[(structure.json)]
-    L[/GET /structure/]
-    M[/POST /structure-match/]
-    R[/POST /ai-report-structure/]
+    P[Structure Parser (TXT->JSON)]
+    S[structure.json]
+    L[GET /structure]
+    M[POST /structure-match]
+    R[POST /ai-report-structure]
     AI[AI Service (OpenAI)]
   end
 
@@ -60,9 +60,9 @@ flowchart LR
   M --> S
   R --> AI
 
-  UI -->|GET /structure| L
-  UI -->|POST /structure-match| M
-  UI -->|POST /ai-report-structure| R
+  UI --> L
+  UI --> M
+  UI --> R
 
   Env[.env OPENAI_API_KEY] -.-> AI
 ```
