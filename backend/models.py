@@ -38,8 +38,9 @@ class ParseResponse(BaseModel):
 class SectionNode(BaseModel):
     id: str  # e.g. "1", "1.2", "1.2.3"
     level: int  # 1, 2 or 3
-    title: str
     text: str
+    # Short heading/title extracted from the body for display and AI prompts
+    title: Optional[str] = None
     # Context of numbering:
     # - "normal" (default)
     # - "annex4" (נספחים under chapter 4)

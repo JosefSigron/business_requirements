@@ -130,7 +130,7 @@ export const App: React.FC = () => {
   }
 
   const NodeView: React.FC<{ node: SectionNode }> = ({ node }) => {
-    const [open, setOpen] = useState<boolean>(false)
+    const [open, setOpen] = useState<boolean>(true)
     const hasKids = node.children && node.children.length > 0
     return (
       <li>
@@ -157,44 +157,15 @@ export const App: React.FC = () => {
         <label><input type="checkbox" name="serves_meat" checked={form.serves_meat} onChange={onChange} /> הגשת בשר</label>
         <label><input type="checkbox" name="offers_delivery" checked={form.offers_delivery} onChange={onChange} /> משלוחים</label>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-          <button onClick={fetchRequirements}>טען דרישות</button>
-          <button onClick={runMatch}>התאם</button>
-          <button onClick={runReport}>צור דוח AI</button>
-          <button onClick={loadStructure}>טען מבנה</button>
-          <button onClick={matchStructure}>סנן מבנה</button>
-          <button onClick={reportFromStructure}>דוח AI מסעיפים</button>
+          <button onClick={matchStructure}>מצא דרישות</button>
+          <button onClick={reportFromStructure}>דוח AI</button>
         </div>
         {loading && <div>טוען…</div>}
         {error && <div style={{ color: 'red' }}>{error}</div>}
       </section>
 
       <section style={{ marginTop: 24 }}>
-        <h2>דרישות</h2>
-        <ul>
-          {requirements.slice(0, 20).map(r => (
-            <li key={r.id}><b>{r.title}</b> — {r.description}</li>
-          ))}
-        </ul>
-      </section>
-
-      <section style={{ marginTop: 24 }}>
-        <h2>התאמות</h2>
-        <ul>
-          {matched.slice(0, 20).map(r => (
-            <li key={r.id}><b>{r.title}</b> — {r.description}</li>
-          ))}
-        </ul>
-      </section>
-
-      <section style={{ marginTop: 24 }}>
-        <h2>מבנה מסמך (עץ)</h2>
-        <ul>
-          {tree.map(n => <NodeView key={n.id} node={n} />)}
-        </ul>
-      </section>
-
-      <section style={{ marginTop: 24 }}>
-        <h2>מבנה מסונן</h2>
+        <h2>דרישות רלוונטיות</h2>
         <ul>
           {matchedTree.map(n => <NodeView key={n.id} node={n} />)}
         </ul>

@@ -6,6 +6,32 @@ from typing import List
 from ..models import AIReportRequest, Requirement, AIReportStructureRequest, SectionNode
 
 
+def _extract_text_from_choice(choice) -> str:
+    try:
+        msg = choice.message
+        content = getattr(msg, "content", None)
+        if isinstance(content, str):
+            return content.strip()
+        if isinstance(content, list):
+            parts: List[str] = []
+            for p in content:
+                # Support dict-like or object-like content parts
+                if isinstance(p, dict):
+                    parts.append(p.get("text") or p.get("input_text") or "")
+                else:
+                    parts.append(getattr(p, "text", "") or getattr(p, "input_text", ""))
+            text = "".join([t for t in parts if t]).strip()
+            if text:
+                return text
+        # Fallback: some SDKs put text directly on choice
+        text_direct = getattr(choice, "text", None)
+        if isinstance(text_direct, str) and text_direct.strip():
+            return text_direct.strip()
+    except Exception:
+        pass
+    return ""
+
+
 def _build_prompt(payload: AIReportRequest) -> str:
     b = payload.business
     req_lines = []
@@ -15,138 +41,159 @@ def _build_prompt(payload: AIReportRequest) -> str:
     lang = payload.language or "he"
     if lang.lower().startswith("he"):
         header = (
-            "אתה מסייע רישוי עסקים. צור דוח ברור, מסודר ופרקטי בעברית, המותאם לעסק: "
-            f"שטח {b.area_sqm} מ""ר, {b.seats} מקומות ישיבה, שימוש בגז: {b.uses_gas}, מגיש בשר: {b.serves_meat}, משלוחים: {b.offers_delivery}.\n"  # noqa: E501
-            "ארגן לפי קטגוריות, סדר עדיפויות, והמלצות פעולה. הימנע משפה משפטית.\n"
+            "פרטי העסק: "
+            f'שטח {b.area_sqm} מ"ר, {b.seats} מקומות ישיבה, שימוש בגז: {b.uses_gas}, מגיש בשר: {b.serves_meat}, משלוחים: {b.offers_delivery}.\n\n'
         )
+        guidelines = (
+            "הנחיות הפקה:\n"
+            "- כתיבה בעברית ברורה ונגישה (ללא שפה משפטית).\n"
+            "- התאמה אישית למאפייני העסק.\n"
+            "- עיבוד חכם של הדרישות למידע ברור ומסודר.\n"
+            "- ארגון לקטגוריות (בטיחות, תשתיות, תפעול, סביבתיות, רשות מקומית וכו').\n"
+            "- קביעת עדיפויות: גבוהה/בינונית/נמוכה עם נימוק קצר.\n"
+            "- המלצות פעולה קונקרטיות (צעדים, אחריות, תלות/תנאים).\n\n"
+        )
+        template = (
+            "תבנית נדרשת:\n"
+            "1) סיכום מנהלים קצר (3–5 נקודות).\n"
+            "2) דרישות לפי קטגוריות עם עדיפויות ורציונל.\n"
+            "3) תוכנית פעולה: צ'קליסט לביצוע (שלבים, תלות, אחריות).\n"
+            "4) סיכונים/הערות מיוחדות.\n"
+            "5) מידע חסר/הנחות עבודה.\n\n"
+        )
+        data_block = "דרישות גולמיות לניתוח:\n" + "\n".join(req_lines)
+        return header + guidelines + template + data_block
     else:
         header = (
-            "You are a licensing assistant. Create a clear, structured, and actionable report tailored to the business: "
-            f"area {b.area_sqm} sqm, {b.seats} seats, uses gas: {b.uses_gas}, serves meat: {b.serves_meat}, delivery: {b.offers_delivery}.\n"  # noqa: E501
-            "Organize by categories, priorities, and action items. Avoid legalese.\n"
+            "Business profile: "
+            f"area {b.area_sqm} sqm, {b.seats} seats, uses gas: {b.uses_gas}, serves meat: {b.serves_meat}, delivery: {b.offers_delivery}.\n\n"
         )
+        guidelines = (
+            "Guidelines:\n"
+            "- Clear, accessible business language (avoid legalese).\n"
+            "- Personalize to the business profile.\n"
+            "- Organize into categories (Safety, Infrastructure, Operations, Environmental, Municipality, etc.).\n"
+            "- Assign priorities (High/Medium/Low) with brief rationale.\n"
+            "- Provide actionable recommendations (steps, ownership, dependencies).\n\n"
+        )
+        template = (
+            "Required format:\n"
+            "1) Executive summary (3–5 bullets).\n"
+            "2) Requirements by category with priorities and rationale.\n"
+            "3) Action plan checklist (steps, dependencies, ownership).\n"
+            "4) Risks/Notes.\n"
+            "5) Missing info/Assumptions.\n\n"
+        )
+        data_block = "Raw requirements to analyze:\n" + "\n".join(req_lines)
+        return header + guidelines + template + data_block
 
-    return header + "\n".join(req_lines)
+
+def _complete_with_openai(prompt: str) -> str:
+    """Call OpenAI and return the text. Raise on any failure."""
+    api_key = os.getenv("OPENAI_API_KEY")
+    if not api_key:
+        raise RuntimeError("OPENAI_API_KEY is not set")
+    try:
+        from openai import OpenAI  # type: ignore
+
+        client = OpenAI(api_key=api_key)
+        completion = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[
+                {
+                    "role": "system",
+                    "content": (
+                        "אתה יועץ רישוי עסקים. צור דוח מקצועי וברור בעברית, מותאם לעסק, עם קטגוריות, עדיפויות והמלצות פעולה. הימנע משפה משפטית; השתמש במונחים עסקיים פשוטים וברורים. השב בעברית בלבד."
+                    ),
+                },
+                {"role": "user", "content": prompt},
+            ],
+            max_tokens=900,
+            temperature=0.3,
+        )
+        text = ""
+        if completion and getattr(completion, "choices", None):
+            text = _extract_text_from_choice(completion.choices[0])
+        text = (text or "").strip()
+        if not text:
+            raise RuntimeError("OpenAI returned empty response text")
+        return text
+    except Exception as e:
+        raise RuntimeError(f"OpenAI call failed: {e}")
 
 
 def generate_ai_report(payload: AIReportRequest) -> str:
-    # If OPENAI_API_KEY is available and openai SDK installed, use it. Otherwise, fallback.
     prompt = _build_prompt(payload)
-    api_key = os.getenv("OPENAI_API_KEY")
-    if api_key:
-        try:
-            # OpenAI SDK v1.x (optional dependency)
-            from openai import OpenAI  # type: ignore
+    return _complete_with_openai(prompt)
 
-            client = OpenAI(api_key=api_key)
-            completion = client.chat.completions.create(
-                model="gpt-4o-mini",
-                messages=[
-                    {"role": "system", "content": "You write clear, structured licensing reports."},
-                    {"role": "user", "content": prompt},
-                ],
-                temperature=0.2,
-                max_tokens=900,
-            )
-            content = completion.choices[0].message.content or ""
-            if isinstance(content, list):
-                # Some SDK returns content as list of parts
-                content = "".join([p.get("text", "") if isinstance(p, dict) else str(p) for p in content])
-            if content:
-                return content
-        except Exception:
-            # Fail silent to fallback
-            pass
-    lines: List[str] = [
-        "דוח התאמה מותאם אישית", 
-        "======================", 
-        "", 
-        "תקציר מנהלים:",
-    ]
 
-    # Simple summary
-    b = payload.business
-    lines.append(
-        f"העסק נמדד בשטח {b.area_sqm} מ" + '"' + f"ר עם {b.seats} מקומות. שימוש בגז: {b.uses_gas}. בשר: {b.serves_meat}. משלוחים: {b.offers_delivery}."
-    )
-    lines.append("")
-    lines.append("דרישות עיקריות:")
-    for r in payload.matched[:10]:
-        lines.append(f"- {r.title}")
-    if len(payload.matched) > 10:
-        lines.append(f"ועוד {len(payload.matched) - 10} דרישות נוספות…")
-
-    lines.append("")
-    lines.append("המלצות פעולה קריטיות (14 הימים הקרובים):")
-    for r in payload.matched[:5]:
-        lines.append(f"1. אשר/הגש: {r.title}")
-
-    lines.append("")
-    lines.append("נספח: תקציר דרישות")
-    for r in payload.matched[:20]:
-        lines.append(f"- {r.title}: {r.description[:180]}…")
-
-    # If OPENAI_API_KEY present, optionally enrich (placeholder to keep no-op by default)
-    # This is where you'd call an external API.
-    return "\n".join(lines)
+def _flatten_nodes_depth_first(nodes: List[SectionNode]) -> List[SectionNode]:
+    flat: List[SectionNode] = []
+    def walk(node: SectionNode) -> None:
+        flat.append(node)
+        for child in node.children or []:
+            walk(child)
+    for node in nodes:
+        walk(node)
+    return flat
 
 
 def _build_prompt_from_nodes(payload: AIReportStructureRequest) -> str:
     b = payload.business
     parts: List[str] = []
-    for n in payload.nodes:
-        parts.append(f"- [{n.id}] {n.title}: {n.text}")
+    # Include all descendants, not just the top-level matched nodes
+    for n in _flatten_nodes_depth_first(payload.nodes):
+        label = n.title or n.id
+        try:
+            indent = "  " * max((n.level or 1) - 1, 0)
+        except Exception:
+            indent = ""
+        parts.append(f"{indent}- [{n.id}] {label}: {n.text}")
     lang = payload.language or "he"
     if lang.lower().startswith("he"):
         header = (
-            "אתה מסייע רישוי עסקים. צור דוח ברור בעברית על סמך סעיפים מובנים.\n"
-            f"פרטי העסק: שטח {b.area_sqm} מ" + '"' + f"ר, {b.seats} מקומות, גז: {b.uses_gas}, בשר: {b.serves_meat}, משלוחים: {b.offers_delivery}.\n"
+            f'פרטי העסק: שטח {b.area_sqm} מ"ר, {b.seats} מקומות ישיבה, גז: {b.uses_gas}, בשר: {b.serves_meat}, משלוחים: {b.offers_delivery}.\n\n'
         )
+        guidelines = (
+            "הנחיות הפקה:\n"
+            "- כתיבה בעברית ברורה ונגישה (ללא שפה משפטית).\n"
+            "- ארגון תוכן לקטגוריות עם עדיפויות (גבוהה/בינונית/נמוכה) ונימוק.\n"
+            "- המלצות פעולה קונקרטיות (צעדים, אחריות, תלות).\n\n"
+        )
+        template = (
+            "תבנית נדרשת:\n"
+            "1) סיכום מנהלים קצר.\n"
+            "2) דרישות לפי קטגוריות עם עדיפויות ורציונל.\n"
+            "3) תוכנית פעולה (צ'קליסט).\n"
+            "4) סיכונים/הערות.\n"
+            "5) מידע חסר/הנחות.\n\n"
+        )
+        data_block = "סעיפים למימוש/ניתוח:\n" + "\n".join(parts)
+        return header + guidelines + template + data_block
     else:
         header = (
-            "You are a licensing assistant. Write a clear structured report based on provided sections.\n"
-            f"Business: area {b.area_sqm} sqm, {b.seats} seats, gas: {b.uses_gas}, meat: {b.serves_meat}, delivery: {b.offers_delivery}.\n"
+            f"Business: area {b.area_sqm} sqm, {b.seats} seats, gas: {b.uses_gas}, meat: {b.serves_meat}, delivery: {b.offers_delivery}.\n\n"
         )
-    return header + "\n".join(parts)
+        guidelines = (
+            "Guidelines:\n"
+            "- Clear business language; avoid legalese.\n"
+            "- Categories with priorities and rationale.\n"
+            "- Actionable plan (checklist).\n\n"
+        )
+        template = (
+            "Required format:\n"
+            "1) Executive summary.\n"
+            "2) Requirements by category with priorities.\n"
+            "3) Action plan checklist.\n"
+            "4) Risks/Notes.\n"
+            "5) Missing info/Assumptions.\n\n"
+        )
+        data_block = "Sections to analyze:\n" + "\n".join(parts)
+        return header + guidelines + template + data_block
 
 
 def generate_ai_report_from_nodes(payload: AIReportStructureRequest) -> str:
     prompt = _build_prompt_from_nodes(payload)
-    api_key = os.getenv("OPENAI_API_KEY")
-    if api_key:
-        try:
-            from openai import OpenAI  # type: ignore
-
-            client = OpenAI(api_key=api_key)
-            completion = client.chat.completions.create(
-                model="gpt-4o-mini",
-                messages=[
-                    {"role": "system", "content": "You write clear, structured licensing reports."},
-                    {"role": "user", "content": prompt},
-                ],
-                temperature=0.2,
-                max_tokens=900,
-            )
-            content = completion.choices[0].message.content or ""
-            if isinstance(content, list):
-                content = "".join([p.get("text", "") if isinstance(p, dict) else str(p) for p in content])
-            if content:
-                return content
-        except Exception:
-            pass
-
-    # offline fallback
-    b = payload.business
-    lines: List[str] = [
-        "דוח התאמה (סעיפים מובנים)",
-        "===========================",
-        "",
-        f"שטח: {b.area_sqm} מ" + '"' + f"ר | מקומות: {b.seats} | גז: {b.uses_gas} | בשר: {b.serves_meat} | משלוחים: {b.offers_delivery}",
-        "",
-        "סעיפים רלוונטיים:",
-    ]
-    for n in payload.nodes[:20]:
-        lines.append(f"- [{n.id}] {n.title}: {n.text[:200]}…")
-    return "\n".join(lines)
+    return _complete_with_openai(prompt)
 
 

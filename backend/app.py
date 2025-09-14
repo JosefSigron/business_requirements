@@ -5,9 +5,10 @@ from typing import List, Optional
 from dotenv import load_dotenv
 
 from .models import BusinessInput, Requirement, MatchResponse, ParseResponse, AIReportRequest, AIReportResponse, AIReportStructureRequest
-from .services.parser import parse_docx_and_save, load_requirements, parse_structure_and_save, load_structure
+from .services.parser import parse_txt_and_save, load_requirements, parse_structure_and_save, load_structure
 from .services.matcher import match_requirements
 from .services.matcher import match_structure as match_structure_tree
+from .services.matcher import match_structure_advanced
 from .services.ai import generate_ai_report, generate_ai_report_from_nodes
 
 
@@ -30,10 +31,10 @@ def create_app() -> FastAPI:
     @app.on_event("startup")
     def ensure_requirements_loaded() -> None:
         json_path = data_dir / "requirements.json"
-        docx_path = Path.cwd() / "18-07-2022_4.2A.docx"
+        txt_path = Path.cwd() / "18-07-2022_4.2A.txt"
         if not json_path.exists():
-            if docx_path.exists():
-                parse_docx_and_save(str(docx_path))
+            if txt_path.exists():
+                parse_txt_and_save(str(txt_path))
             else:
                 # No data yet; that's okay, user can trigger parse endpoint later
                 pass
@@ -42,37 +43,25 @@ def create_app() -> FastAPI:
     def health() -> dict:
         return {"status": "ok"}
 
-    @app.post("/parse-docx", response_model=ParseResponse)
-    def parse_docx(docx_path: Optional[str] = None) -> ParseResponse:
-        if docx_path is None:
-            # Prefer TXT > PDF > DOCX
+    @app.post("/parse-text", response_model=ParseResponse)
+    def parse_text(txt_path: Optional[str] = None) -> ParseResponse:
+        if txt_path is None:
             default_txt = Path.cwd() / "18-07-2022_4.2A.txt"
-            default_pdf = Path.cwd() / "18-07-2022_4.2A.pdf"
-            default_docx = Path.cwd() / "18-07-2022_4.2A.docx"
-            if default_txt.exists():
-                default_path = default_txt
-            elif default_pdf.exists():
-                default_path = default_pdf
-            else:
-                default_path = default_docx
-            if not default_path.exists():
-                raise HTTPException(status_code=400, detail="Source file not found. Provide 'docx_path' explicitly (PDF or DOCX).")
-            docx_path = str(default_path)
+            if not default_txt.exists():
+                raise HTTPException(status_code=400, detail="Source TXT file not found. Provide 'txt_path' explicitly.")
+            txt_path = str(default_txt)
 
-        parsed = parse_docx_and_save(docx_path)
+        parsed = parse_txt_and_save(txt_path)
         return ParseResponse(total_requirements=len(parsed), sample=parsed[:5])
 
     @app.post("/parse-structure")
-    def parse_structure(docx_path: Optional[str] = None) -> dict:
-        if docx_path is None:
+    def parse_structure(txt_path: Optional[str] = None) -> dict:
+        if txt_path is None:
             default_txt = Path.cwd() / "18-07-2022_4.2A.txt"
-            default_pdf = Path.cwd() / "18-07-2022_4.2A.pdf"
-            default_docx = Path.cwd() / "18-07-2022_4.2A.docx"
-            default_path = default_txt if default_txt.exists() else (default_pdf if default_pdf.exists() else default_docx)
-            if not default_path.exists():
-                raise HTTPException(status_code=400, detail="Source file not found. Provide 'docx_path' explicitly (PDF or DOCX).")
-            docx_path = str(default_path)
-        tree = parse_structure_and_save(docx_path)
+            if not default_txt.exists():
+                raise HTTPException(status_code=400, detail="Source TXT file not found. Provide 'txt_path' explicitly.")
+            txt_path = str(default_txt)
+        tree = parse_structure_and_save(txt_path)
         return {"nodes": [n.dict() for n in tree], "count": len(tree)}
 
     @app.get("/requirements", response_model=List[Requirement])
@@ -94,7 +83,7 @@ def create_app() -> FastAPI:
     @app.post("/structure-match")
     def structure_match(input_data: BusinessInput) -> dict:
         tree = load_structure()
-        matched = match_structure_tree(input_data, tree)
+        matched = match_structure_advanced(input_data, tree)
         return {"nodes": [n.dict() for n in matched], "count": len(matched)}
 
     @app.post("/ai-report", response_model=AIReportResponse)
