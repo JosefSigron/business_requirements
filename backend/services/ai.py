@@ -87,6 +87,7 @@ def _complete_with_openai(prompt: str) -> str:
 
 
 def _flatten_nodes_depth_first(nodes: List[SectionNode]) -> List[SectionNode]:
+    """Return a depth-first flattened list of nodes including all descendants."""
     flat: List[SectionNode] = []
     def walk(node: SectionNode) -> None:
         flat.append(node)
@@ -98,6 +99,10 @@ def _flatten_nodes_depth_first(nodes: List[SectionNode]) -> List[SectionNode]:
 
 
 def _build_prompt_from_nodes(payload: AIReportStructureRequest) -> str:
+    """Construct the user prompt: business profile + flattened sections.
+
+    The Hebrew guidelines nudge the model to output a structured, actionable report.
+    """
     b = payload.business
     parts: List[str] = []
     # Include all descendants, not just the top-level matched nodes

@@ -16,6 +16,10 @@ STRUCTURE_PATH = DATA_DIR / "structure.json"
 
 
 def _normalize_whitespace(text: str) -> str:
+    """Collapse runs of whitespace to single spaces and trim.
+
+    Keep content semantic while making parsing robust to spacing.
+    """
     return re.sub(r"\s+", " ", text).strip()
 
 
@@ -43,8 +47,11 @@ ANNEX5_END_RE = re.compile(r"^נספח\s*ג['\"׳]?\s*-\s*טופס ביקורת 
 
 
 def _split_inline_headers(line: str) -> List[str]:
+    """Split a single line with multiple numbered headers into separate lines.
+
+    Example: "2.7 text 2.7.1 more" → ["2.7 text", "2.7.1 more"]
+    """
     parts: List[str] = []
-    # Find all occurrences of header tokens anywhere in the line
     matches = list(re.finditer(r"(\d+(?:\.\d+){1,4})\.?\s+", line))
     if not matches:
         return [line]
@@ -59,6 +66,11 @@ def _split_inline_headers(line: str) -> List[str]:
 
 
 def _extract_section_tree_from_lines(lines: List[str]) -> List[SectionNode]:
+    """Parse lines into a numbered hierarchical SectionNode tree.
+
+    Handles chapters/annex contexts and multiple header tokens appearing inline.
+    Also derives simple numeric bounds and booleans when present.
+    """
     roots: Dict[str, SectionNode] = {}
     level1_stack: Dict[str, SectionNode] = {}
     level2_stack: Dict[str, SectionNode] = {}

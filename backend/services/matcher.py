@@ -5,6 +5,7 @@ import re
 
 
 def _within_range(value, min_value, max_value) -> bool:
+    """Check if a numeric value is within optional [min, max] bounds."""
     if min_value is not None and value < min_value:
         return False
     if max_value is not None and value > max_value:
@@ -13,6 +14,7 @@ def _within_range(value, min_value, max_value) -> bool:
 
 
 def _bool_match(user_value: bool, req_value: bool | None) -> bool:
+    """Three-state boolean match: None means 'no constraint'."""
     if req_value is None:
         return True
     return user_value == req_value
@@ -22,6 +24,7 @@ def _bool_match(user_value: bool, req_value: bool | None) -> bool:
 
 
 def _node_matches_business(business: BusinessInput, node: SectionNode) -> bool:
+    """Apply structured constraints on a single node against the business profile."""
     if not _within_range(business.area_sqm, node.min_area_sqm, node.max_area_sqm):
         return False
     if not _within_range(business.seats, node.min_seats, node.max_seats):
@@ -36,6 +39,7 @@ def _node_matches_business(business: BusinessInput, node: SectionNode) -> bool:
 
 
 def match_structure(business: BusinessInput, tree: List[SectionNode]) -> List[SectionNode]:
+    """Basic matching: keep nodes that match or have matched descendants."""
     results: List[SectionNode] = []
 
     def dfs(node: SectionNode) -> SectionNode | None:
@@ -71,6 +75,7 @@ def match_structure(business: BusinessInput, tree: List[SectionNode]) -> List[Se
 
 
 def _contains_any_word(text: str, words: List[str]) -> bool:
+    """Whole-word containment test using Unicode-aware boundaries."""
     # Whole-word match using Unicode-aware boundaries
     for w in words:
         if re.search(rf"(?<!\w){re.escape(w)}(?!\w)", text, flags=re.UNICODE):
@@ -79,6 +84,7 @@ def _contains_any_word(text: str, words: List[str]) -> bool:
 
 
 def _extract_ints(text: str) -> List[int]:
+    """Extract up to 4-digit integers from text (used for area/seat hints)."""
     vals: List[int] = []
     for m in re.finditer(r"\b(\d{1,4})\b", text):
         try:
@@ -89,6 +95,7 @@ def _extract_ints(text: str) -> List[int]:
 
 
 def _area_matches(text: str, area_sqm: float) -> bool:
+    """Heuristic area matcher: looks for explicit comparisons relative to area."""
     t = text
     # Must contain an area term as a whole word
     area_terms = ["שטח", "שטחים", "מ\"ר", "מ'", "מ׳"]
@@ -149,6 +156,7 @@ def _area_matches(text: str, area_sqm: float) -> bool:
 
 
 def _advanced_node_match(business: BusinessInput, node: SectionNode) -> bool:
+    """Advanced matcher combining structured fields with keyword heuristics."""
     text = node.text or ""
     # 2) seats rule: if < 200 never show 3.2.1
     if business.seats < 200 and node.id == "3.2.1":
@@ -192,6 +200,11 @@ def _advanced_node_match(business: BusinessInput, node: SectionNode) -> bool:
 
 
 def match_structure_advanced(business: BusinessInput, tree: List[SectionNode]) -> List[SectionNode]:
+    """Build a pruned tree of relevant nodes.
+
+    If a node matches, include the entire subtree for context; otherwise include
+    only the matched descendants.
+    """
     results: List[SectionNode] = []
 
     # Build a flat index of all nodes to support subtree reconstruction even if
